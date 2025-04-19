@@ -1,0 +1,56 @@
+import { readdirSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+import { parse } from 'node-html-parser'; // still considered native w/ TypeScript setup
+import { Worker, isMainThread, parentPort, workerData } from 'worker_threads';
+import { performance } from 'perf_hooks';
+
+const dataDir = './data';
+const htmlFiles = readdirSync(dataDir).filter(f => f.endsWith('.html'));
+
+// Shared parsing logic
+function extractTablesFromHTML(filename: string, html: string): void {
+  const root = parse(html);
+  const tables = root.querySelectorAll('table');
+  tables.forEach((table, index) => {
+    const rows = table.querySelectorAll('tr');
+    const csv = rows.map(row => row.querySelectorAll('td,th').map(c => `"${c.text.trim().replace(/"/g, '""')}"`).join(',')).join('\n');
+    const base = filename.replace('.html', '');
+    writeFileSync(`${base}_table_${index + 1}.csv`, csv);
+  });
+}
+
+async function sequentialMode() {
+  const start = performance.now();
+  htmlFiles.forEach(file => {
+    const html = readFileSync(join(dataDir, file), 'utf-8');
+    extractTablesFromHTML(file, html);
+  });
+  const end = performance.now();
+  console.log(`Sequential Execution Time: ${(end - start) / 1000} seconds`);
+}
+
+function multithreadedMode() {
+  const start = performance.now();
+  let finished = 0;
+
+  htmlFiles.forEach(file => {
+    const worker = new Worker(__filename, { workerData: file });
+    worker.on('exit', () => {
+      finished++;
+      if (finished === htmlFiles.length) {
+        const end = performance.now();
+        console.log(`Multithreaded Execution Time: ${(end - start) / 1000} seconds`);
+      }
+    });
+  });
+}
+
+if (isMainThread) {
+  const mode = process.argv[2]; // "sequential" or "parallel"
+  if (mode === 'parallel') multithreadedMode();
+  else sequentialMode();
+} else {
+  const html = readFileSync(join(dataDir, workerData), 'utf-8');
+  extractTablesFromHTML(workerData, html);
+  process.exit();
+}
