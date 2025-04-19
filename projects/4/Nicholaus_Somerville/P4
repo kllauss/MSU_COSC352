@@ -1,0 +1,10 @@
+git init
+git add .
+git commit -m "Initial commit: Project 4 table extractor base structure"
+
+
+git remote add origin https://github.com/kllauss/project4-html-extractor.git
+
+# Push to main branch
+git branch -M main
+git push -u origin main
